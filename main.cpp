@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <iostream>
 #include <memory>
 #include <netinet/in.h>
 #include <ratio>
@@ -42,7 +43,7 @@ struct SocketWrapper {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::println("Usage: util host.com");
+        std::println("Usage: pingger host.com");
         return 0;
     }
     char* hostname = argv[1]; // Host which we wanna ping
@@ -52,7 +53,8 @@ int main(int argc, char** argv) {
 
     SocketWrapper sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP); // Createing raw socket, so OS doesn't add TCP/UDP headersr
     if (sock < 0) {
-        throw std::runtime_error("Could not create a socket");
+        std::cerr << "Could not create a RAW socket, please run with sudo!" << std::endl;
+        return -1;
     }
     
     sockaddr_in dest_addr{}; // Here we store destination address info like ip addr and yada yada
@@ -60,17 +62,19 @@ int main(int argc, char** argv) {
     addrinfo hints{};
     hints.ai_family = AF_INET; // We're gonna look only for ipv4 addressses
     if (getaddrinfo(hostname, nullptr, &hints, &hostname_info) != 0) {
-        throw std::runtime_error("Could not get hostname info");
+        std::cerr << "Unable to get address info from this hostname. Service not known" << std::endl;
+        return -1;
     }
     sockaddr_in* address_of_host;
     for (auto* ptr = hostname_info; ptr != nullptr; ptr = ptr->ai_next) {
         if (ptr) { // Check if valid then add
             address_of_host = (sockaddr_in*)ptr->ai_addr;
+            break;
         }
     }
     if (!address_of_host) {
         freeaddrinfo(hostname_info);
-        throw std::runtime_error("Address is null");
+        std::cerr << "Address is null. Why TF?" << std::endl;
     }
 
     dest_addr.sin_addr = address_of_host->sin_addr;
@@ -90,7 +94,7 @@ int main(int argc, char** argv) {
         if (sendto(sock, &send_buffer, sizeof(outcoming_packet), 0, (sockaddr*)&dest_addr, sizeof(dest_addr)) < 0) {
             freeaddrinfo(hostname_info);
             perror("Could not send");
-            throw std::runtime_error("Sending failed");
+            return -1;
         }
 
         sockaddr_in recv;
@@ -98,9 +102,9 @@ int main(int argc, char** argv) {
         if (recvfrom(sock, &recv_buffer, sizeof(incoming_packet), 0, (sockaddr*)&recv, &socklen) < 0) {
             freeaddrinfo(hostname_info);
             perror("Could not receive");
-            throw std::runtime_error("Receiving failed");
+            return -1;
         }
-        
+
         auto end = std::chrono::high_resolution_clock::now();
         auto dur = std::chrono::duration<double, std::milli>{end - start};
 
