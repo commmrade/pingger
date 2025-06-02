@@ -109,7 +109,7 @@ int main(int argc, char** argv) {
         auto dur = std::chrono::duration<double, std::milli>{end - start};
 
         if (recv_buffer.icmp_header.icmp_type == ICMP_ECHOREPLY) {
-            std::println("Size: {}, IP: {}; Ping - {}ms, Sequence: {}, TTL: {}", 
+            std::println("Size: {}, IP: {}; Ping - {:.2f}ms, Sequence: {}, TTL: {}", 
                 sizeof(ip) + sizeof(icmp), 
                 inet_ntoa(recv.sin_addr), 
                 dur.count(), 
