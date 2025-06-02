@@ -1,6 +1,8 @@
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <memory>
@@ -40,14 +42,24 @@ struct SocketWrapper {
     }
 };
 
+int packets_sent{0};
+char* hostname;
+double total_time_spent{0};
+void sigint_handler(int) {
+    std::println("\b\b--- {} statistics ---", hostname);
+    std::println("Packages sent: {}, Packages Received: {}\nTime spent: {:.2f}ms", packets_sent, packets_sent, total_time_spent);
+    exit(0);
+}
+
 
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::println("Usage: pingger host.com");
         return 0;
     }
-    char* hostname = argv[1]; // Host which we wanna ping
+    signal(SIGINT, sigint_handler);
 
+    hostname = argv[1]; // Host which we wanna ping
     outcoming_packet send_buffer{}; // Self-explanotary?
     incoming_packet recv_buffer{}; // Init to zeros
 
@@ -118,6 +130,8 @@ int main(int argc, char** argv) {
             );
         } // Else just skip it
         ++current_seq;
+        ++packets_sent;
+        total_time_spent += dur.count();
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
     freeaddrinfo(hostname_info);
