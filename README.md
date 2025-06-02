@@ -17,3 +17,6 @@ cmake ..
 sudo make install
 ```
 Now, you are supposed to have this installed, run: `pingger <hostname>`
+## Dependencies
+CMake
+GCC/Clang
