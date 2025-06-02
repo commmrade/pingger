@@ -5,3 +5,5 @@ set(CMAKE_CXX_STANDARD_REQUIRED true)
 
 add_executable(pingger main.cpp)
 
+install(TARGETS pingger DESTINATION /usr/bin)
+install(CODE "execute_process(COMMAND setcap cap_net_raw+ep /usr/bin/pingger)")
