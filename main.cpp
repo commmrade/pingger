@@ -3,12 +3,9 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <iostream>
-#include <memory>
 #include <netinet/in.h>
 #include <ratio>
-#include <stdexcept>
 #include <sys/socket.h>
 #include <netinet/ip_icmp.h>
 #include <thread>
@@ -16,8 +13,8 @@
 #include <sys/types.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <netinet/ip_icmp.h>
 #include <print>
-#include "packets.hpp"
 #include <sys/ioctl.h>
 
 uint16_t checksum(void *addr, int count) {
@@ -68,8 +65,8 @@ int main(int argc, char** argv) {
     signal(SIGINT, sigint_handler);
 
     hostname = argv[1]; // Host which we wanna ping
-    outcoming_packet send_buffer{}; // Self-explanotary?
-    incoming_packet recv_buffer{}; // Init to zeros
+    icmp s_icmp{}; // Self-explanotary?
+    icmp r_icmp{}; // Init to zeros
 
     SocketWrapper sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP); // Createing raw socket, so OS doesn't add TCP/UDP headersr
     if (sock < 0) {
@@ -103,24 +100,24 @@ int main(int argc, char** argv) {
 
     auto current_seq = 1;
 
-    send_buffer.icmp_header.icmp_type = ICMP_ECHO;
-    send_buffer.icmp_header.icmp_code = 0;
-    send_buffer.icmp_header.icmp_id = 1433;
+    s_icmp.icmp_type = ICMP_ECHO;
+    s_icmp.icmp_code = 0;
+    s_icmp.icmp_id = 1433;
 
     while (true) {
-        send_buffer.icmp_header.icmp_seq = htons(current_seq);
-        send_buffer.icmp_header.icmp_cksum = 0;
-        send_buffer.icmp_header.icmp_cksum = checksum(&send_buffer, sizeof(send_buffer));
+        s_icmp.icmp_seq = htons(current_seq);
+        s_icmp.icmp_cksum = 0;
+        s_icmp.icmp_cksum = checksum(&s_icmp, sizeof(s_icmp));
 
         auto start = std::chrono::high_resolution_clock::now();
-        if (send(sock, &send_buffer, sizeof(send_buffer), 0) < 0) {
+        if (send(sock, &s_icmp, sizeof(s_icmp), 0) < 0) {
             perror("Could not send");
             return -1;
         }
 
         sockaddr_in recv;
         socklen_t socklen = sizeof(recv);
-        ssize_t rd_bytes = recvfrom(sock, &recv_buffer, sizeof(incoming_packet), 0, (sockaddr*)&recv, &socklen);
+        ssize_t rd_bytes = recvfrom(sock, &r_icmp, sizeof(r_icmp), 0, (sockaddr*)&recv, &socklen);
         if (rd_bytes < 0) {
             perror("Could not receive");
             return -1;
@@ -129,7 +126,7 @@ int main(int argc, char** argv) {
         auto end = std::chrono::high_resolution_clock::now();
         auto dur = std::chrono::duration<double, std::milli>{end - start};
 
-        if (recv_buffer.icmp_header.icmp_type == ICMP_ECHOREPLY) {
+        if (r_icmp.icmp_type == ICMP_ECHOREPLY) {
         std::println("Size: {}, IP: {}; Ping - {:.2f}ms, Sequence: {}",
             rd_bytes,
             inet_ntoa(recv.sin_addr),
