@@ -18,6 +18,7 @@
 #include <arpa/inet.h>
 #include <print>
 #include "packets.hpp"
+#include <sys/ioctl.h>
 
 uint16_t checksum(void *addr, int count) {
     uint32_t sum = 0;
@@ -51,6 +52,13 @@ void sigint_handler(int) {
     exit(0);
 }
 
+template <typename Action>
+struct defer {
+    Action a;
+    ~defer() {
+        a();
+    }
+};
 
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -63,13 +71,12 @@ int main(int argc, char** argv) {
     outcoming_packet send_buffer{}; // Self-explanotary?
     incoming_packet recv_buffer{}; // Init to zeros
 
-    SocketWrapper sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP); // Createing raw socket, so OS doesn't add TCP/UDP headersr
+    SocketWrapper sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP); // Createing raw socket, so OS doesn't add TCP/UDP headersr
     if (sock < 0) {
         std::cerr << "Could not create a RAW socket, please run with sudo!" << std::endl;
         return -1;
     }
     
-    sockaddr_in dest_addr{}; // Here we store destination address info like ip addr and yada yada
     addrinfo* hostname_info; // A list of addresses of "hostname" host, it is a linked list kinda actually
     addrinfo hints{};
     hints.ai_family = AF_INET; // We're gonna look only for ipv4 addressses
@@ -77,6 +84,10 @@ int main(int argc, char** argv) {
         std::cerr << "Unable to get address info from this hostname. Service not known" << std::endl;
         return -1;
     }
+    defer def{[hostname_info]{
+        freeaddrinfo(hostname_info);
+    }};
+
     sockaddr_in* address_of_host;
     for (auto* ptr = hostname_info; ptr != nullptr; ptr = ptr->ai_next) {
         if (ptr) { // Check if valid then add
@@ -84,35 +95,33 @@ int main(int argc, char** argv) {
             break;
         }
     }
-    if (!address_of_host) {
-        freeaddrinfo(hostname_info);
-        std::cerr << "Address is null. Why TF?" << std::endl;
+
+    if (connect(sock, (const sockaddr*)address_of_host, sizeof(*address_of_host)) < 0) {
+        std::cerr << "Unable to connect\n";
+        return -1;
     }
 
-    dest_addr.sin_addr = address_of_host->sin_addr;
-    dest_addr.sin_family = AF_INET; // Dest address is IPv4
     auto current_seq = 1;
-    while (true) {  
-        memset(&send_buffer, 0, sizeof(outcoming_packet)); // Clear the buffer
 
-        // Setup icmp headers
-        send_buffer.icmp_header.icmp_type = ICMP_ECHO;
-        send_buffer.icmp_header.icmp_code = 0; // 0 for echo reply i think
-        send_buffer.icmp_header.icmp_id = htons(getuid() & 0xffff);
+    send_buffer.icmp_header.icmp_type = ICMP_ECHO;
+    send_buffer.icmp_header.icmp_code = 0;
+    send_buffer.icmp_header.icmp_id = 1433;
+
+    while (true) {
         send_buffer.icmp_header.icmp_seq = htons(current_seq);
-        send_buffer.icmp_header.icmp_cksum = checksum(&send_buffer.icmp_header, sizeof(icmp));
+        send_buffer.icmp_header.icmp_cksum = 0;
+        send_buffer.icmp_header.icmp_cksum = checksum(&send_buffer, sizeof(send_buffer));
 
         auto start = std::chrono::high_resolution_clock::now();
-        if (sendto(sock, &send_buffer, sizeof(outcoming_packet), 0, (sockaddr*)&dest_addr, sizeof(dest_addr)) < 0) {
-            freeaddrinfo(hostname_info);
+        if (send(sock, &send_buffer, sizeof(send_buffer), 0) < 0) {
             perror("Could not send");
             return -1;
         }
 
         sockaddr_in recv;
         socklen_t socklen = sizeof(recv);
-        if (recvfrom(sock, &recv_buffer, sizeof(incoming_packet), 0, (sockaddr*)&recv, &socklen) < 0) {
-            freeaddrinfo(hostname_info);
+        ssize_t rd_bytes = recvfrom(sock, &recv_buffer, sizeof(incoming_packet), 0, (sockaddr*)&recv, &socklen);
+        if (rd_bytes < 0) {
             perror("Could not receive");
             return -1;
         }
@@ -121,18 +130,17 @@ int main(int argc, char** argv) {
         auto dur = std::chrono::duration<double, std::milli>{end - start};
 
         if (recv_buffer.icmp_header.icmp_type == ICMP_ECHOREPLY) {
-            std::println("Size: {}, IP: {}; Ping - {:.2f}ms, Sequence: {}, TTL: {}", 
-                sizeof(ip) + sizeof(icmp), 
-                inet_ntoa(recv.sin_addr), 
-                dur.count(), 
-                current_seq, 
-                recv_buffer.ip_header.ip_ttl
-            );
+        std::println("Size: {}, IP: {}; Ping - {:.2f}ms, Sequence: {}",
+            rd_bytes,
+            inet_ntoa(recv.sin_addr),
+            dur.count(),
+            current_seq
+        );
         } // Else just skip it
+
         ++current_seq;
         ++packets_sent;
         total_time_spent += dur.count();
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
-    freeaddrinfo(hostname_info);
 }
