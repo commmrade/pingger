@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
 
     SocketWrapper sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP); // Createing raw socket, so OS doesn't add TCP/UDP headersr
     if (sock < 0) {
-        std::cerr << "Could not create a RAW socket, please run with sudo!" << std::endl;
+        std::cerr << "Could not create a socket!" << std::endl;
         return -1;
     }
     
