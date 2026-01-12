@@ -3,7 +3,9 @@ project(pingger VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED true)
 
-add_executable(pingger main.cpp)
+add_executable(pingger main.cpp utils.cpp net.cpp)
+
+target_compile_options(pingger PRIVATE -Wall -Wextra)
 
 install(TARGETS pingger DESTINATION /usr/bin)
 install(CODE "execute_process(COMMAND setcap cap_net_raw+ep /usr/bin/pingger)")
